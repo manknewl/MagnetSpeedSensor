@@ -1,0 +1,118 @@
+
+# Import required libraries
+import time
+import RPi.GPIO as GPIO
+  
+
+# This function gets called everytime the GPIO senses a change in output 
+def sense(channel):
+  
+  #diameter of roller in meters
+  diameter=0.056
+  
+  
+  #calculate how much time has passed since first time function is called
+  time_elapsed=timer()
+  time_elapsed_minutes=time_elapsed/60
+  sense.time_vector.append(time_elapsed)
+    
+  #calculate revolutions
+  counter=calculator()
+  
+  #define pi instead of importing math
+  pi=3.14
+  
+  #calculate distance based on counter
+  distance=counter*pi*diameter
+  distance_km=distance/1000
+
+  #calculate average speed based on total distance and time elapsed in km/hr
+  speed=3.6*distance/time_elapsed
+  
+  i=sense.i
+  j=sense.i+1
+  delta_rpm=(0.00001+sense.time_vector[j]-sense.time_vector[i])
+  
+  #calculates instantaneous velocity based on distance of one revolution over time delta (km/hr)
+  velocity=3.6*((pi*diameter)/delta_rpm)
+     
+  #if velocity shoots up, its likely because of an error 
+  if velocity/(speed+0.001)>3.5 and velocity>40:
+      velocity=0
+  else: velocity=velocity
+  sense.velocity_vector.append(velocity)
+        
+  if i>30:
+      x=i
+      max=i-35
+      clean_velo=velocity
+      while x>max:
+          clean_velo+=sense.velocity_vector[x]
+          x-=1
+      avg_velo=clean_velo/35
+  else: avg_velo=velocity
+  
+  miles_hr=avg_velo*0.621371
+  power=5.244820*miles_hr+0.01968*miles_hr**3
+  
+  sense.i+=1
+  
+  
+  if i%20==0:
+      print("Distance so far:", "%2.1f"% distance_km, "km")
+      print("Time so far:", "%2.2f"% time_elapsed_minutes, "minutes")
+      print("Velocity is:","%2.1f"% avg_velo, "km/hr")
+      print("Power is   :","%2.1f"% power, "Watts")
+      print("\n")
+      all_variables=str(time_elapsed_minutes)+'\t'+str(distance_km)+'\t'+str(avg_velo)+'\t'+str(power)
+      my_data=open("/home/pi/data.txt",mode="a")
+      my_data.write(all_variables+'\n')
+      
+sense.time_vector=[]
+sense.i=-1
+sense.velocity_vector=[]
+
+#function gets call from sense to calculate the distance 
+def calculator():
+    calculator.counter += 1
+    return calculator.counter  
+calculator.counter = -1
+
+
+#function gets call from sense to calculate the time elapsed 
+def timer():
+    timedelta=time.time()-timer.initial_time
+    return timedelta
+timer.initial_time=time.time()
+
+
+def main():
+  # Wrap main content in a try block so we can catch the user pressing CTRL-C and run the
+  # GPIO cleanup function. This will also prevent the user seeing lots of unnecessary error
+  # messages.
+
+  # Get initial reading
+  sense(17)
+
+  try:
+    # Loop until users quits with CTRL-C
+    while True :
+      time.sleep(0.1)
+
+  except KeyboardInterrupt:
+    # Reset GPIO settings
+    GPIO.cleanup()
+
+# Tell GPIO library to use GPIO references
+GPIO.setmode(GPIO.BCM)
+print("Setup GPIO pin as input on GPIO17")
+
+
+# Set Switch GPIO as input, pull high by default
+GPIO.setup(17 , GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.add_event_detect(17, GPIO.BOTH, callback=sense, bouncetime=10)
+
+
+
+if __name__=="__main__":
+    main()
